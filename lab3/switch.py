@@ -163,6 +163,14 @@ class SimpleSwitch13(app_manager.RyuApp):
         self.logger.info("Datapath: %s, in_port: %s", dpid, in_port)
         self.logger.info("IP src: %s -> dst: %s", ip_pkt.src, ip_pkt.dst)
 
+        # Drop UDP from H1 and H4
+        if udp_pkt and ip_pkt.src in ["10.0.0.1", "10.0.0.4"]:
+            match = parser.OFPMatch(
+                in_port=in_port, eth_type=0x0800, ip_proto=17, ipv4_src=ip_pkt.src
+            )
+            self.add_flow(datapath, 100, match, [])  # drop rule
+            return
+
         dst_mac, dst_dpid, dst_port = self.arp_table.get(ip_pkt.dst, (None, None, None))
         if dst_mac is None:
             self.logger.info("Unknown destination IP: %s", ip_pkt.dst)
