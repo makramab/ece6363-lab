@@ -90,13 +90,12 @@ class SimpleSwitch13(app_manager.RyuApp):
         dst = eth.dst
         src = eth.src
 
-        self.logger.info("====== Packet-In Event ======")
-        self.logger.info("Datapath ID: %s", dpid)
-        self.logger.info("In port: %s", in_port)
-        self.logger.info("Ethernet src: %s -> dst: %s", src, dst)
-        self.logger.info("ARP pkt %s", arp_pkt)
-
         if arp_pkt:
+            self.logger.info("====== Packet-In Event ======")
+            self.logger.info("Datapath ID: %s", dpid)
+            self.logger.info("In port: %s", in_port)
+            self.logger.info("Ethernet src: %s -> dst: %s", src, dst)
+            self.logger.info("ARP pkt %s", arp_pkt)
             self.logger.info(
                 "ARP packet: %s asks who has %s", arp_pkt.src_ip, arp_pkt.dst_ip
             )
