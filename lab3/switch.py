@@ -205,6 +205,16 @@ class SimpleSwitch13(app_manager.RyuApp):
                     data=rst_pkt.data,
                 )
                 datapath.send_msg(out)
+                # Also install a drop rule to block the TCP flow
+                match = parser.OFPMatch(
+                    in_port=in_port,
+                    eth_type=0x0800,
+                    ip_proto=6,
+                    ipv4_src=ip_pkt.src,
+                    ipv4_dst=ip_pkt.dst,
+                    tcp_dst=tcp_pkt.dst_port,
+                )
+                self.add_flow(datapath, 100, match, [])
             return
 
         dst_mac, dst_dpid, dst_port = self.arp_table.get(ip_pkt.dst, (None, None, None))
