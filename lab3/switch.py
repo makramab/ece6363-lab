@@ -28,6 +28,12 @@ class SimpleSwitch13(app_manager.RyuApp):
         super(SimpleSwitch13, self).__init__(*args, **kwargs)
         # self.logger.info("Init has been called")
         self.mac_to_port = {}
+        self.arp_table = {
+            "10.0.0.1": ("10:00:00:00:00:01", 1, 1),  # H1 on s1 port 1
+            "10.0.0.2": ("10:00:00:00:00:02", 2, 1),  # H2 on s2 port 1
+            "10.0.0.3": ("10:00:00:00:00:03", 3, 1),  # H3 on s3 port 1
+            "10.0.0.4": ("10:00:00:00:00:04", 4, 1),  # H4 on s4 port 1
+        }
 
     @set_ev_cls(ofp_event.EventOFPSwitchFeatures, CONFIG_DISPATCHER)
     def switch_features_handler(self, ev):
@@ -91,32 +97,41 @@ class SimpleSwitch13(app_manager.RyuApp):
         src = eth.src
 
         if arp_pkt:
-            self.logger.info("====== Packet-In Event ======")
-            self.logger.info("Datapath ID: %s", dpid)
-            self.logger.info("In port: %s", in_port)
-            self.logger.info("Ethernet src: %s -> dst: %s", src, dst)
-            self.logger.info(
-                "ARP packet: %s asks who has %s", arp_pkt.src_ip, arp_pkt.dst_ip
-            )
+            self.logger.info("==== Proxy ARP Request ====")
+            self.logger.info("ARP: who has %s? Tell %s", arp_pkt.dst_ip, arp_pkt.src_ip)
 
-            # JUST flood, don't install ARP rule
-            actions = [parser.OFPActionOutput(ofproto.OFPP_FLOOD)]
+            if arp_pkt.opcode == arp.ARP_REQUEST and arp_pkt.dst_ip in self.arp_table:
+                # Get target MAC and respond
+                target_mac, target_dpid, target_port = self.arp_table[arp_pkt.dst_ip]
 
-            # More specific match: includes in_port and MACs to avoid overly generic flow
-            match = parser.OFPMatch(
-                in_port=in_port, eth_type=0x0806, eth_src=src, eth_dst=dst
-            )
+                # Build ARP reply
+                arp_reply = packet.Packet()
+                arp_reply.add_protocol(
+                    ethernet.ethernet(
+                        ethertype=eth.ethertype, src=target_mac, dst=eth.src
+                    )
+                )
+                arp_reply.add_protocol(
+                    arp.arp(
+                        opcode=arp.ARP_REPLY,
+                        src_mac=target_mac,
+                        src_ip=arp_pkt.dst_ip,
+                        dst_mac=eth.src,
+                        dst_ip=arp_pkt.src_ip,
+                    )
+                )
+                arp_reply.serialize()
 
-            self.add_flow(datapath, 1, match, actions)
-
-            out = parser.OFPPacketOut(
-                datapath=datapath,
-                buffer_id=msg.buffer_id,
-                in_port=in_port,
-                actions=actions,
-                data=None if msg.buffer_id != ofproto.OFP_NO_BUFFER else msg.data,
-            )
-            datapath.send_msg(out)
+                actions = [parser.OFPActionOutput(in_port)]
+                out = parser.OFPPacketOut(
+                    datapath=datapath,
+                    buffer_id=ofproto.OFP_NO_BUFFER,
+                    in_port=ofproto.OFPP_CONTROLLER,
+                    actions=actions,
+                    data=arp_reply.data,
+                )
+                datapath.send_msg(out)
+                self.logger.info("Sent ARP reply to %s (%s)", arp_pkt.src_ip, eth.src)
             return
 
         if ip_pkt:
