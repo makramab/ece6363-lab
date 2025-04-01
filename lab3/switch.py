@@ -177,9 +177,15 @@ class SimpleSwitch13(app_manager.RyuApp):
             )
             if len(all_paths) > 1:
                 if icmp_pkt or tcp_pkt:
-                    chosen_path = min(all_paths, key=self._path_direction)
+                    self.logger.info("Multiple paths found, CLOCKWISE is chosen")
+                    chosen_path = min(all_paths, key=self._path_direction)  # clockwise
                 elif udp_pkt:
-                    chosen_path = max(all_paths, key=self._path_direction)
+                    self.logger.info(
+                        "Multiple paths found, counter-clockwise is chosen"
+                    )
+                    chosen_path = max(
+                        all_paths, key=self._path_direction
+                    )  # counter-clockwise
                 else:
                     chosen_path = all_paths[0]
             else:
