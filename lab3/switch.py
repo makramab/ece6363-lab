@@ -18,7 +18,7 @@ from ryu.controller import ofp_event
 from ryu.controller.handler import CONFIG_DISPATCHER, MAIN_DISPATCHER
 from ryu.controller.handler import set_ev_cls
 from ryu.ofproto import ofproto_v1_3
-from ryu.lib.packet import packet, ethernet, ipv4, tcp, udp, icmp, ether_types
+from ryu.lib.packet import packet, ethernet, ipv4, tcp, udp, icmp, ether_types, arp
 
 
 class SimpleSwitch13(app_manager.RyuApp):
@@ -85,6 +85,7 @@ class SimpleSwitch13(app_manager.RyuApp):
         tcp_pkt = pkt.get_protocol(tcp.tcp)
         udp_pkt = pkt.get_protocol(udp.udp)
         icmp_pkt = pkt.get_protocol(icmp.icmp)
+        arp_pkt = pkt.get_protocol(arp.arp)
 
         dst = eth.dst
         src = eth.src
@@ -93,6 +94,26 @@ class SimpleSwitch13(app_manager.RyuApp):
         self.logger.info("Datapath ID: %s", dpid)
         self.logger.info("In port: %s", in_port)
         self.logger.info("Ethernet src: %s -> dst: %s", src, dst)
+
+        if arp_pkt:
+            self.logger.info(
+                "ARP packet: %s asks who has %s", arp_pkt.src_ip, arp_pkt.dst_ip
+            )
+
+            actions = [parser.OFPActionOutput(ofproto.OFPP_FLOOD)]
+
+            match = parser.OFPMatch(eth_type=0x0806)
+            self.add_flow(datapath, 1, match, actions)
+
+            out = parser.OFPPacketOut(
+                datapath=datapath,
+                buffer_id=msg.buffer_id,
+                in_port=in_port,
+                actions=actions,
+                data=None if msg.buffer_id != ofproto.OFP_NO_BUFFER else msg.data,
+            )
+            datapath.send_msg(out)
+            return
 
         if ip_pkt:
             self.logger.info("IPv4 src: %s -> dst: %s", ip_pkt.src, ip_pkt.dst)
