@@ -179,7 +179,7 @@ class SimpleSwitch13(app_manager.RyuApp):
             and ip_pkt.src in ["10.0.0.2", "10.0.0.4"]
         ):
             self.logger.info("H2 and H4 can't send HTTP packet, packet dropped")
-            if tcp_pkt.bits & 0x02:  # SYN bit
+            if tcp_pkt.bits & 0x02 and not (tcp_pkt.bits & 0x10):
                 self.logger.info("TCP RST reply sent")
                 rst_pkt = packet.Packet()
                 rst_pkt.add_protocol(
