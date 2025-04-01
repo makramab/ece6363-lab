@@ -95,15 +95,12 @@ class SimpleSwitch13(app_manager.RyuApp):
             self.logger.info("Datapath ID: %s", dpid)
             self.logger.info("In port: %s", in_port)
             self.logger.info("Ethernet src: %s -> dst: %s", src, dst)
-            self.logger.info("ARP pkt %s", arp_pkt)
             self.logger.info(
                 "ARP packet: %s asks who has %s", arp_pkt.src_ip, arp_pkt.dst_ip
             )
 
+            # JUST flood, don't install ARP rule
             actions = [parser.OFPActionOutput(ofproto.OFPP_FLOOD)]
-
-            match = parser.OFPMatch(eth_type=0x0806)
-            self.add_flow(datapath, 1, match, actions)
 
             out = parser.OFPPacketOut(
                 datapath=datapath,
