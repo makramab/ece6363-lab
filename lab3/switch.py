@@ -168,6 +168,7 @@ class SimpleSwitch13(app_manager.RyuApp):
             match = parser.OFPMatch(
                 in_port=in_port, eth_type=0x0800, ip_proto=17, ipv4_src=ip_pkt.src
             )
+            self.logger.info("H1 can't send UDP to H4, packet dropped", ip_pkt.dst)
             self.add_flow(datapath, 100, match, [])  # drop rule
             return
 
