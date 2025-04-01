@@ -48,6 +48,8 @@ class SimpleSwitch13(app_manager.RyuApp):
         actions = [
             parser.OFPActionOutput(ofproto.OFPP_CONTROLLER, ofproto.OFPCML_NO_BUFFER)
         ]
+        self.logger.info("Ev: %s", ev)
+        self.logger.info("Ev: %s", ev.msg.datapath)
         self.logger.info("Switch features handler has been called")
         self.add_flow(datapath, 0, match, actions)
 
