@@ -102,6 +102,13 @@ class SimpleSwitch13(app_manager.RyuApp):
             # JUST flood, don't install ARP rule
             actions = [parser.OFPActionOutput(ofproto.OFPP_FLOOD)]
 
+            # More specific match: includes in_port and MACs to avoid overly generic flow
+            match = parser.OFPMatch(
+                in_port=in_port, eth_type=0x0806, eth_src=src, eth_dst=dst
+            )
+
+            self.add_flow(datapath, 1, match, actions)
+
             out = parser.OFPPacketOut(
                 datapath=datapath,
                 buffer_id=msg.buffer_id,
