@@ -19,6 +19,7 @@ from ryu.controller.handler import CONFIG_DISPATCHER, MAIN_DISPATCHER
 from ryu.controller.handler import set_ev_cls
 from ryu.ofproto import ofproto_v1_3
 from ryu.lib.packet import packet, ethernet, ipv4, tcp, udp, icmp, ether_types, arp
+import networkx as nx
 
 
 class SimpleSwitch13(app_manager.RyuApp):
@@ -40,6 +41,26 @@ class SimpleSwitch13(app_manager.RyuApp):
             2: 2,  # s2 → s3
             3: 2,  # s3 → s4
             4: 2,  # s4 → s1
+        }
+        self.graph = nx.Graph()
+        self.graph.add_edges_from(
+            [
+                (1, 2),  # s1-s2
+                (2, 3),  # s2-s3
+                (3, 4),  # s3-s4
+                (4, 1),  # s4-s1
+            ]
+        )
+        # (dpid, neighbor_dpid) → out_port
+        self.port_map = {
+            (1, 2): 2,
+            (1, 4): 3,
+            (2, 1): 3,
+            (2, 3): 2,
+            (3, 2): 3,
+            (3, 4): 2,
+            (4, 3): 3,
+            (4, 1): 2,
         }
 
     @set_ev_cls(ofp_event.EventOFPSwitchFeatures, CONFIG_DISPATCHER)
@@ -147,7 +168,21 @@ class SimpleSwitch13(app_manager.RyuApp):
         if dpid == dst_dpid:
             out_port = dst_port
         else:
-            out_port = self.clockwise_port.get(dpid)
+            all_paths = list(
+                nx.all_shortest_paths(self.graph, source=dpid, target=dst_dpid)
+            )
+            if len(all_paths) > 1:
+                if icmp_pkt or tcp_pkt:
+                    chosen_path = min(all_paths, key=self._path_direction)
+                elif udp_pkt:
+                    chosen_path = max(all_paths, key=self._path_direction)
+                else:
+                    chosen_path = all_paths[0]
+            else:
+                chosen_path = all_paths[0]
+
+            next_hop = chosen_path[chosen_path.index(dpid) + 1]
+            out_port = self.port_map.get((dpid, next_hop))
 
         actions = [parser.OFPActionOutput(out_port)]
         match = parser.OFPMatch(
