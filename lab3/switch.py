@@ -33,6 +33,14 @@ class SimpleSwitch13(app_manager.RyuApp):
             "10.0.0.3": ("10:00:00:00:00:03", 3, 1),  # H3 on s3 port 1
             "10.0.0.4": ("10:00:00:00:00:04", 4, 1),  # H4 on s4 port 1
         }
+        # Clockwise neighbor port per switch
+        # dpid: port that goes clockwise
+        self.clockwise_port = {
+            1: 2,  # s1 → s2
+            2: 2,  # s2 → s3
+            3: 2,  # s3 → s4
+            4: 2,  # s4 → s1
+        }
 
     @set_ev_cls(ofp_event.EventOFPSwitchFeatures, CONFIG_DISPATCHER)
     def switch_features_handler(self, ev):
@@ -139,8 +147,7 @@ class SimpleSwitch13(app_manager.RyuApp):
         if dpid == dst_dpid:
             out_port = dst_port
         else:
-            # TEMPORARY: flood for intermediate switches
-            out_port = ofproto.OFPP_FLOOD
+            out_port = self.clockwise_port.get(dpid)
 
         actions = [parser.OFPActionOutput(out_port)]
         match = parser.OFPMatch(
