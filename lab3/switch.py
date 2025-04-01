@@ -26,7 +26,6 @@ class SimpleSwitch13(app_manager.RyuApp):
 
     def __init__(self, *args, **kwargs):
         super(SimpleSwitch13, self).__init__(*args, **kwargs)
-        # self.logger.info("Init has been called")
         self.mac_to_port = {}
         self.arp_table = {
             "10.0.0.1": ("10:00:00:00:00:01", 1, 1),  # H1 on s1 port 1
@@ -41,25 +40,15 @@ class SimpleSwitch13(app_manager.RyuApp):
         ofproto = datapath.ofproto
         parser = datapath.ofproto_parser
 
-        # install table-miss flow entry
-        #
-        # We specify NO BUFFER to max_len of the output action due to
-        # OVS bug. At this moment, if we specify a lesser number, e.g.,
-        # 128, OVS will send Packet-In with invalid buffer_id and
-        # truncated packet data. In that case, we cannot output packets
-        # correctly.  The bug has been fixed in OVS v2.1.0.
         match = parser.OFPMatch()
         actions = [
             parser.OFPActionOutput(ofproto.OFPP_CONTROLLER, ofproto.OFPCML_NO_BUFFER)
         ]
-        # self.logger.info("Switch features handler has been called")
         self.add_flow(datapath, 0, match, actions)
 
     def add_flow(self, datapath, priority, match, actions, buffer_id=None):
         ofproto = datapath.ofproto
         parser = datapath.ofproto_parser
-
-        # self.logger.info("Add flow has been called")
 
         inst = [parser.OFPInstructionActions(ofproto.OFPIT_APPLY_ACTIONS, actions)]
         if buffer_id:
@@ -96,15 +85,14 @@ class SimpleSwitch13(app_manager.RyuApp):
         dst = eth.dst
         src = eth.src
 
+        # Handle ARP with static mapping
         if arp_pkt:
             self.logger.info("==== Proxy ARP Request ====")
             self.logger.info("ARP: who has %s? Tell %s", arp_pkt.dst_ip, arp_pkt.src_ip)
 
             if arp_pkt.opcode == arp.ARP_REQUEST and arp_pkt.dst_ip in self.arp_table:
-                # Get target MAC and respond
                 target_mac, target_dpid, target_port = self.arp_table[arp_pkt.dst_ip]
 
-                # Build ARP reply
                 arp_reply = packet.Packet()
                 arp_reply.add_protocol(
                     ethernet.ethernet(
@@ -134,83 +122,42 @@ class SimpleSwitch13(app_manager.RyuApp):
                 self.logger.info("Sent ARP reply to %s (%s)", arp_pkt.src_ip, eth.src)
             return
 
-        if ip_pkt:
-            self.logger.info("IPv4 src: %s -> dst: %s", ip_pkt.src, ip_pkt.dst)
+        # Handle IP packets
+        if ip_pkt is None:
+            return
 
-        if tcp_pkt:
-            self.logger.info(
-                "TCP src_port: %s -> dst_port: %s", tcp_pkt.src_port, tcp_pkt.dst_port
-            )
-            self.logger.info("TCP flags: 0x%02x", tcp_pkt.bits)
+        self.logger.info("==== IP Packet-In ====")
+        self.logger.info("Datapath: %s, in_port: %s", dpid, in_port)
+        self.logger.info("IP src: %s -> dst: %s", ip_pkt.src, ip_pkt.dst)
 
-        if udp_pkt:
-            self.logger.info(
-                "UDP src_port: %s -> dst_port: %s", udp_pkt.src_port, udp_pkt.dst_port
-            )
+        dst_mac, dst_dpid, dst_port = self.arp_table.get(ip_pkt.dst, (None, None, None))
+        if dst_mac is None:
+            self.logger.info("Unknown destination IP: %s", ip_pkt.dst)
+            return
 
-        if icmp_pkt:
-            self.logger.info("ICMP type: %s, code: %s", icmp_pkt.type, icmp_pkt.code)
+        # If at destination switch, send to host
+        if dpid == dst_dpid:
+            out_port = dst_port
+        else:
+            # TEMPORARY: flood for intermediate switches
+            out_port = ofproto.OFPP_FLOOD
 
-    # @set_ev_cls(ofp_event.EventOFPPacketIn, MAIN_DISPATCHER)
-    # def _packet_in_handler(self, ev):
-    #     self.logger.info("Packet in handler has been called")
-    #     # If you hit this you might want to increase
-    #     # the "miss_send_length" of your switch
-    #     if ev.msg.msg_len < ev.msg.total_len:
-    #         self.logger.debug(
-    #             "packet truncated: only %s of %s bytes",
-    #             ev.msg.msg_len,
-    #             ev.msg.total_len,
-    #         )
-    #     msg = ev.msg
-    #     datapath = msg.datapath
-    #     ofproto = datapath.ofproto
-    #     parser = datapath.ofproto_parser
-    #     in_port = msg.match["in_port"]
-    #
-    #     pkt = packet.Packet(msg.data)
-    #     eth = pkt.get_protocols(ethernet.ethernet)[0]
-    #
-    #     if eth.ethertype == ether_types.ETH_TYPE_LLDP:
-    #         # ignore lldp packet
-    #         return
-    #     dst = eth.dst
-    #     src = eth.src
-    #
-    #     dpid = format(datapath.id, "d").zfill(16)
-    #     self.mac_to_port.setdefault(dpid, {})
-    #
-    #     self.logger.info("packet in %s %s %s %s", dpid, src, dst, in_port)
-    #
-    #     # learn a mac address to avoid FLOOD next time.
-    #     self.mac_to_port[dpid][src] = in_port
-    #
-    #     if dst in self.mac_to_port[dpid]:
-    #         out_port = self.mac_to_port[dpid][dst]
-    #     else:
-    #         out_port = ofproto.OFPP_FLOOD
-    #
-    #     actions = [parser.OFPActionOutput(out_port)]
-    #
-    #     # install a flow to avoid packet_in next time
-    #     if out_port != ofproto.OFPP_FLOOD:
-    #         match = parser.OFPMatch(in_port=in_port, eth_dst=dst, eth_src=src)
-    #         # verify if we have a valid buffer_id, if yes avoid to send both
-    #         # flow_mod & packet_out
-    #         if msg.buffer_id != ofproto.OFP_NO_BUFFER:
-    #             self.add_flow(datapath, 1, match, actions, msg.buffer_id)
-    #             return
-    #         else:
-    #             self.add_flow(datapath, 1, match, actions)
-    #     data = None
-    #     if msg.buffer_id == ofproto.OFP_NO_BUFFER:
-    #         data = msg.data
-    #
-    #     out = parser.OFPPacketOut(
-    #         datapath=datapath,
-    #         buffer_id=msg.buffer_id,
-    #         in_port=in_port,
-    #         actions=actions,
-    #         data=data,
-    #     )
-    #     datapath.send_msg(out)
+        actions = [parser.OFPActionOutput(out_port)]
+        match = parser.OFPMatch(
+            in_port=in_port,
+            eth_src=eth.src,
+            eth_dst=eth.dst,
+            eth_type=0x0800,
+            ipv4_src=ip_pkt.src,
+            ipv4_dst=ip_pkt.dst,
+        )
+        self.add_flow(datapath, 10, match, actions)
+
+        out = parser.OFPPacketOut(
+            datapath=datapath,
+            buffer_id=msg.buffer_id,
+            in_port=in_port,
+            actions=actions,
+            data=None if msg.buffer_id != ofproto.OFP_NO_BUFFER else msg.data,
+        )
+        datapath.send_msg(out)
