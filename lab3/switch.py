@@ -94,6 +94,10 @@ class SimpleSwitch13(app_manager.RyuApp):
             )
         datapath.send_msg(mod)
 
+    def _path_direction(self, path):
+        # Lower total "dpid" difference → more clockwise
+        return sum((b - a) % 4 for a, b in zip(path[:-1], path[1:]))
+
     @set_ev_cls(ofp_event.EventOFPPacketIn, MAIN_DISPATCHER)
     def _packet_in_handler(self, ev):
         msg = ev.msg
