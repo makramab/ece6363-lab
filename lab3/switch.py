@@ -94,7 +94,7 @@ class SimpleSwitch13(app_manager.RyuApp):
         self.logger.info("Datapath ID: %s", dpid)
         self.logger.info("In port: %s", in_port)
         self.logger.info("Ethernet src: %s -> dst: %s", src, dst)
-        self.logger.info("ARP pkt", arp_pkt)
+        self.logger.info("ARP pkt %s", arp_pkt)
 
         if arp_pkt:
             self.logger.info(
