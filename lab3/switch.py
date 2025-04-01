@@ -172,6 +172,39 @@ class SimpleSwitch13(app_manager.RyuApp):
             self.add_flow(datapath, 100, match, [])  # drop rule
             return
 
+        # Drop HTTP from H2 or H4 with TCP RST reply
+        if (
+            tcp_pkt
+            and tcp_pkt.dst_port == 80
+            and ip_pkt.src in ["10.0.0.2", "10.0.0.4"]
+        ):
+            if tcp_pkt.bits & 0x02:  # SYN bit
+                rst_pkt = packet.Packet()
+                rst_pkt.add_protocol(
+                    ethernet.ethernet(ethertype=eth.ethertype, src=eth.dst, dst=eth.src)
+                )
+                rst_pkt.add_protocol(ipv4.ipv4(dst=ip_pkt.src, src=ip_pkt.dst, proto=6))
+                rst_pkt.add_protocol(
+                    tcp.tcp(
+                        src_port=tcp_pkt.dst_port,
+                        dst_port=tcp_pkt.src_port,
+                        ack=tcp_pkt.seq + 1,
+                        bits=0b000100,
+                    )
+                )  # RST flag
+                rst_pkt.serialize()
+
+                actions = [parser.OFPActionOutput(in_port)]
+                out = parser.OFPPacketOut(
+                    datapath=datapath,
+                    buffer_id=ofproto.OFP_NO_BUFFER,
+                    in_port=ofproto.OFPP_CONTROLLER,
+                    actions=actions,
+                    data=rst_pkt.data,
+                )
+                datapath.send_msg(out)
+            return
+
         dst_mac, dst_dpid, dst_port = self.arp_table.get(ip_pkt.dst, (None, None, None))
         if dst_mac is None:
             self.logger.info("Unknown destination IP: %s", ip_pkt.dst)
